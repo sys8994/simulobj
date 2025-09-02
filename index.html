@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIMULOBJET</title>
+    <link rel="stylesheet" href="template/style.css">
+</head>
+<body>
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <span class="app-title">SIMULOBJET</span>
+            <span class="project-title">Cross-Point SOM</span>
+        </div>
+        <div class="top-bar-right">
+            <button>Prj info</button>
+            <button>Save</button>
+            <button>Share</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="tab-panel">
+            <div class="tab active" data-tab="structure-panel">Structure</div>
+            <div class="tab" data-tab="model-panel">Model</div>
+            <div class="tab" data-tab="materials-panel">Materials</div>
+            <div class="tab" data-tab="simulation-panel">Simulation</div>
+        </div>
+
+        <div id="structure-panel" class="work-panel active">
+            <div class="viewer-area" id="viewer-container">
+            </div>
+            <div class="input-panel">
+                <h3>Structure Controls</h3>
+                <div class="control-group" id="layer-visibility-controls">
+                    <h4>Layer Visibility</h4>
+                </div>
+                
+                <div class="control-group">
+                    <h4>Meshing</h4>
+                    <label for="mesh-density-slider">MEsh Size : <span id="mesh-density-value">20</span></label>
+                    <input type="range" id="mesh-density-slider" min="2" max="50" value="20" step="1">
+                    <button id="create-mesh-btn" class="action-button">Create Swept Mesh</button>
+                    <button id="toggle-view-btn" class="action-button" style="display: none;">Toggle View (Solid/Mesh/Result)</button>
+                </div>
+
+                <h3>Viewer Controls</h3>
+                <div class="control-group">
+                    <h4>Perspective (FoV)</h4>
+                    <input type="range" id="fov-slider" min="25" max="120" value="50" step="1">
+                </div>
+                <div class="control-group">
+                    <h4>Cross-Section (X-axis)</h4>
+                    <label>
+                        <input type="checkbox" id="clipping-toggle"> Enable Clipping
+                    </label>
+                    <input type="range" id="clipping-slider" min="-50" max="50" value="50" step="1" disabled>
+                </div>
+                 <div class="control-group">
+                    <h4>Background</h4>
+                    <label class="color-input-label">
+                        <span>Color</span>
+                        <input type="color" id="bg-color-picker" value="#161b22">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div id="simulation-panel" class="work-panel">
+            <div class="input-panel" style="width: 100%; border-left: none;">
+                <h3>Simulation Controls</h3>
+                <div class="control-group">
+                    <h4>Steady-State Heat Conduction</h4>
+                    <p class="description">
+                        Sets the left side (min X) to a high temperature and the right side (max X) to a low temperature. The result will be shown in the 'Structure' tab.
+                    </p>
+                    <label>High Temperature (°C)</label>
+                    <input type="number" class="sim-input" id="high-temp-input" value="100">
+                    <label>Low Temperature (°C)</label>
+                    <input type="number" class="sim-input" id="low-temp-input" value="20">
+                    <button id="run-simulation-btn" class="action-button">Run Simulation</button>
+                </div>
+                <div class="control-group" id="legend-container">
+                </div>
+            </div>
+        </div>
+
+        <div id="model-panel" class="work-panel"><p style="padding: 20px;">Model Setup Panel</p></div>
+        <div id="materials-panel" class="work-panel"><p style="padding: 20px;">Materials Setup Panel</p></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.js"></script>
+    <script src="template/script_earcut.js"></script>
+    <script src="template/script_builder.js"></script>
+    <script src="template/script_meshgenerator.js"></script>
+    <script src="template/script_solver.js"></script>
+    <script src="template/script_viewer.js"></script>
+    <script>
+        const builder = new SIMULOBJET.StructureBuilder();
+        const meshGenerator = new SIMULOBJET.MeshGenerator();
+        const solver = new SIMULOBJET.Solver();
+        const viewer = new SIMULOBJET.Viewer(document.getElementById('viewer-container'));
+
+        let deviceLayers = builder.getDeviceLayers();
+        let meshData = null;
+
+        viewer.displaySolidModel(deviceLayers);
+
+        const createMeshBtn = document.getElementById('create-mesh-btn');
+        const toggleViewBtn = document.getElementById('toggle-view-btn');
+        const densitySlider = document.getElementById('mesh-density-slider');
+        const densityValueSpan = document.getElementById('mesh-density-value');
+        const runSimBtn = document.getElementById('run-simulation-btn');
+        const structureTab = document.querySelector('.tab[data-tab="structure-panel"]');
+
+        densitySlider.addEventListener('input', (e) => {
+            densityValueSpan.textContent = e.target.value;
+        });
+
+        createMeshBtn.addEventListener('click', () => {
+            const density = parseInt(densitySlider.value, 10);
+            meshData = meshGenerator.generateSweptMesh(deviceLayers, density);
+            viewer.setMeshData(meshData);
+            toggleViewBtn.style.display = 'block';
+            viewer.setViewMode('mesh');
+        });
+
+        toggleViewBtn.addEventListener('click', () => {
+            viewer.toggleViewMode();
+        });
+
+        runSimBtn.addEventListener('click', () => {
+            if (!meshData) {
+                alert("Please generate a mesh first in the 'Structure' tab.");
+                return;
+            }
+            const highTemp = parseFloat(document.getElementById('high-temp-input').value);
+            const lowTemp = parseFloat(document.getElementById('low-temp-input').value);
+
+            const temperatures = solver.solveSteadyStateHeat(meshData, highTemp, lowTemp);
+            
+            viewer.displaySimulationResult(meshData, temperatures);
+            viewer.setViewMode('result');
+
+            const legendContainer = document.getElementById('legend-container');
+            legendContainer.innerHTML = '<h4>Temperature Legend</h4>';
+            const legend = viewer.createLegend(highTemp, lowTemp);
+            legendContainer.appendChild(legend);
+
+            // Structure 탭으로 강제 전환
+            structureTab.click();
+        });
+        
+        const tabs = document.querySelectorAll('.tab');
+        const workPanels = document.querySelectorAll('.work-panel');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const targetPanelId = tab.getAttribute('data-tab');
+                workPanels.forEach(panel => {
+                    if (panel.id === targetPanelId) {
+                        panel.classList.add('active');
+                    } else {
+                        panel.classList.remove('active');
+                    }
+                });
+                viewer.handleResize();
+            });
+        });
+
+        const visibilityControlsContainer = document.getElementById('layer-visibility-controls');
+        const layerNames = viewer.getLayerNames(deviceLayers);
+        layerNames.forEach(name => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = true;
+            checkbox.addEventListener('change', (event) => viewer.setLayerVisibility(name, event.target.checked));
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(name));
+            visibilityControlsContainer.appendChild(label);
+        });
+        
+        const fovSlider = document.getElementById('fov-slider');
+        fovSlider.value = viewer.camera.fov;
+        fovSlider.addEventListener('input', (event) => {
+            viewer.setFov(event.target.value);
+        });
+
+        const clippingToggle = document.getElementById('clipping-toggle');
+        const clippingSlider = document.getElementById('clipping-slider');
+        clippingToggle.addEventListener('change', (event) => viewer.enableClipping(event.target.checked));
+        clippingSlider.addEventListener('input', (event) => viewer.setClippingPosition(parseFloat(event.target.value)));
+        
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        viewer.setBackgroundColor(bgColorPicker.value);
+        bgColorPicker.addEventListener('input', (event) => {
+            viewer.setBackgroundColor(event.target.value);
+        });
+    </script>
+</body>
+</html>
